@@ -14,6 +14,7 @@ export const useStore = defineStore('stroeId', {
       return this.age
     }
   },
+
   getters: {
     doubleAge: state => state.age * 2
   }

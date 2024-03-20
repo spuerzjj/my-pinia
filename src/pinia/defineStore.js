@@ -34,7 +34,7 @@ export function defineStore(idOrOptions, optionsOrSetup) {
 
       if (typeof optionsOrSetup === 'function') {
         // 函数式
-        createSetupStore()
+        createSetupStore(id, optionsOrSetup, piniaStore)
       } else {
         // 选项式
         createOptionStore(id, options, piniaStore)
@@ -46,7 +46,36 @@ export function defineStore(idOrOptions, optionsOrSetup) {
   return useStore
 }
 
-function createSetupStore() {}
+/**
+ *
+ * @param {*} id
+ * @param {*} setup
+ * @param {*} piniaStore
+ */
+function createSetupStore(id, setup, piniaStore) {
+  // useStore返回的响应式对象
+  const store = reactive({})
+
+  // 运行setup函数
+  const setupStore = setup()
+
+  for (let key in setupStore) {
+    const prop = setupStore[key] //可能是属性，也可能是函数
+    if (typeof prop === 'function') {
+      setupStore[key] = wrapAction(prop)
+    }
+  }
+  Object.assign(store, setupStore)
+  piniaStore._stores.set(id, store)
+
+  // 改变函数this指向
+  function wrapAction(action) {
+    return function (...args) {
+      let ret = action.call(store, ...args)
+      return ret
+    }
+  }
+}
 
 // 选项式
 /**
@@ -62,21 +91,20 @@ function createOptionStore(id, options, piniaStore) {
     piniaStore.state[id] = state ? state() : {} // 存入state，如果state存在则运行函数得到结果，如不存在则创建一个空对象存入
     // 1. 处理state的数据
     const localState = piniaStore.state[id]
-    // 2. 处理actions，直接把actions复制到localState上，这样使用时，this自然就指向获得state了
+    // 2. 处理actions，直接把actions复制到localState上
     Object.assign(localState, actions)
     // 3. 处理getters，把每一个getter函数用计算属性包装一下，使其建立起与state.xxx的依赖关系
     const computedGetters = Object.keys(getters).reduce((computedGetters, name) => {
       computedGetters[name] = computed(() => {
-        console.log('computed')
-        let state = piniaStore._stores.get(id)
-        return getters[name].call(state, state)
+        let store = piniaStore._stores.get(id)
+        return getters[name].call(store, store) //this和参数均为store
       })
       return computedGetters
     }, {})
+
     Object.assign(localState, computedGetters)
-    return reactive(localState)
+    return localState
   }
 
-  // 将setup函数返回的内容存入_stores
-  piniaStore._stores.set(id, setup())
+  createSetupStore(id, setup, piniaStore)
 }
